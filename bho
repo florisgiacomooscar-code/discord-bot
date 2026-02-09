@@ -676,4 +676,4 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Bot connesso come {bot.user}")
 
-bot.run("MTQ2NzI4MDUxMzQ1Mzc4OTM5Mg.G9d6JI.2T_z9iSTW44YwkLCCnSX9FFQNjjkHAzeKTn9hs")
+bot.run("")
