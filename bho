@@ -1,0 +1,679 @@
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason=None):
+    if member == ctx.author:
+        await ctx.send("❌ Non puoi bannare te stesso.")
+        return
+
+    if reason is None:
+        reason = "Nessun motivo specificato"
+
+    await member.ban(reason=reason)
+    await ctx.send(f"🔨 {member.mention} è stato bannato.\n📝 Motivo: {reason}")
+@ban.error
+async def ban_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Non hai i permessi per usare questo comando.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ Devi specificare un utente da bannare.\nEsempio: `!ban @utente motivo`")
+
+from datetime import timedelta
+
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def timeout(ctx, member: discord.Member, minutes: int, *, reason=None):
+    if member == ctx.author:
+        await ctx.send("❌ Non puoi mettere in timeout te stesso.")
+        return
+
+    if minutes <= 0:
+        await ctx.send("❌ I minuti devono essere maggiori di 0.")
+        return
+
+    if reason is None:
+        reason = "Nessun motivo specificato"
+
+    duration = timedelta(minutes=minutes)
+    await member.timeout(duration, reason=reason)
+
+    await ctx.send(
+        f"⏳ {member.mention} è stato messo in timeout per **{minutes} minuti**.\n"
+        f"📝 Motivo: {reason}"
+    )
+@timeout.error
+async def timeout_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Non hai i permessi per usare questo comando.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(
+            "❌ Uso corretto:\n"
+            "`!timeout @utente minuti motivo`"
+        )
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ Devi specificare un numero valido di minuti.")
+{}
+import json
+import os
+from datetime import datetime
+WARN_FILE = "warns.json"
+
+def load_warns():
+    if not os.path.exists(WARN_FILE):
+        return {}
+    with open(WARN_FILE, "r") as f:
+        return json.load(f)
+
+def save_warns(data):
+    with open(WARN_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+WARN_FILE = "warns.json"
+
+def load_warns():
+    if not os.path.exists(WARN_FILE):
+        return {}
+    with open(WARN_FILE, "r") as f:
+        return json.load(f)
+
+def save_warns(data):
+    with open(WARN_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def warn(ctx, member: discord.Member, *, reason=None):
+    if member == ctx.author:
+        await ctx.send("❌ Non puoi warnare te stesso.")
+        return
+
+    if reason is None:
+        reason = "Nessun motivo specificato"
+
+    data = load_warns()
+    user_id = str(member.id)
+
+    if user_id not in data:
+        data[user_id] = []
+
+    data[user_id].append({
+        "moderator": ctx.author.name,
+        "reason": reason,
+        "date": datetime.now().strftime("%d/%m/%Y %H:%M")
+    })
+
+    save_warns(data)
+
+    await ctx.send(
+        f"⚠️ {member.mention} ha ricevuto un **WARN**.\n"
+        f"📝 Motivo: {reason}\n"
+        f"📊 Totale warn: **{len(data[user_id])}**"
+    )
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def warns(ctx, member: discord.Member):
+    data = load_warns()
+    user_id = str(member.id)
+
+    if user_id not in data or len(data[user_id]) == 0:
+        await ctx.send(f"✅ {member.mention} non ha warn.")
+        return
+
+    msg = f"📋 **Warn di {member.name}**\n\n"
+    for i, warn in enumerate(data[user_id], start=1):
+        msg += (
+            f"**{i}.** {warn['reason']}\n"
+            f"👮 {warn['moderator']} — 🕒 {warn['date']}\n\n"
+        )
+
+    await ctx.send(msg)
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason=None):
+    if member == ctx.author:
+        await ctx.send("❌ Non puoi kickare te stesso.")
+        return
+
+    if reason is None:
+        reason = "Nessun motivo specificato"
+
+    await member.kick(reason=reason)
+
+    await ctx.send(
+        f"👢 {member.mention} è stato kickato.\n"
+        f"📝 Motivo: {reason}"
+    )
+@kick.error
+async def kick_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Non hai i permessi per usare questo comando.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(
+            "❌ Uso corretto:\n"
+            "`!kick @utente motivo`"
+        )
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int):
+    if amount <= 0:
+        await ctx.send("❌ Devi specificare un numero valido.")
+        return
+
+    deleted = await ctx.channel.purge(limit=amount + 1)
+
+    await ctx.send(f"🧹 Eliminati **{len(deleted)-1}** messaggi.", delete_after=5)
+import time
+from collections import defaultdict
+from datetime import timedelta
+SPAM_LIMIT = 5        # messaggi
+SPAM_TIME = 5         # secondi
+TIMEOUT_MINUTES = 10  # punizione
+
+user_messages = defaultdict(list)
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    now = time.time()
+    user_id = message.author.id
+
+    # salva timestamp messaggi
+    user_messages[user_id].append(now)
+
+    # rimuove messaggi vecchi
+    user_messages[user_id] = [
+        t for t in user_messages[user_id]
+        if now - t < SPAM_TIME
+    ]
+
+    # controllo spam
+    if len(user_messages[user_id]) >= SPAM_LIMIT:
+        try:
+            await message.author.timeout(
+                timedelta(minutes=TIMEOUT_MINUTES),
+                reason="Spam automatico"
+            )
+            await message.channel.send(
+                f"⛔ {message.author.mention} timeout per spam."
+            )
+        except:
+            pass
+
+        user_messages[user_id].clear()
+
+    # IMPORTANTISSIMO: permette agli altri comandi di funzionare
+    await bot.process_commands(message)
+risposte = [
+    "Sì.",
+    "No.",
+    "Forse.",
+    "Chiedi di nuovo più tardi.",
+    "Assolutamente sì.",
+    "Assolutamente no."
+]
+
+@bot.command()
+async def eightball(ctx, *, question):
+    await ctx.send(f"🎱 {random.choice(risposte)}")
+{}
+import random
+import json
+import os
+LEVEL_FILE = "levels.json"
+
+def load_levels():
+    if not os.path.exists(LEVEL_FILE):
+        return {}
+    with open(LEVEL_FILE, "r") as f:
+        return json.load(f)
+
+def save_levels(data):
+    with open(LEVEL_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # ---------------- XP ----------------
+    data = load_levels()
+    user_id = str(message.author.id)
+
+    if user_id not in data:
+        data[user_id] = {"xp": 0, "level": 1}
+
+    # Ogni messaggio dà 5-10 XP casuali
+    xp_gain = random.randint(5, 10)
+    data[user_id]["xp"] += xp_gain
+
+    # Calcolo livello: ogni 100 XP = livello successivo
+    xp_for_next_level = data[user_id]["level"] * 100
+    if data[user_id]["xp"] >= xp_for_next_level:
+        data[user_id]["level"] += 1
+        data[user_id]["xp"] -= xp_for_next_level
+        asyncio.create_task(message.channel.send(
+            f"🎉 {message.author.mention} è salito al **livello {data[user_id]['level']}**!"
+        ))
+
+    save_levels(data)
+    # -----------------------------------
+
+    # Permette agli altri comandi di funzionare
+    await bot.process_commands(message)
+@bot.command()
+async def level(ctx, member: discord.Member = None):
+    if member is None:
+        member = ctx.author
+
+    data = load_levels()
+    user_id = str(member.id)
+
+    if user_id not in data:
+        await ctx.send(f"❌ {member.mention} non ha ancora XP.")
+        return
+
+    xp = data[user_id]["xp"]
+    level = data[user_id]["level"]
+    xp_for_next_level = level * 100
+
+    await ctx.send(
+        f"📊 {member.mention} — Livello: **{level}**\n"
+        f"XP: **{xp}/{xp_for_next_level}**"
+    )
+import random
+
+kiss_gifs = [
+    "https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif",
+    "https://media.giphy.com/media/FqBTvSNjNzeZG/giphy.gif",
+    "https://media.giphy.com/media/bGm9FuBCGg4SY/giphy.gif",
+    "https://media.giphy.com/media/ZRSGWtBJG4Tza/giphy.gif"
+]
+
+@bot.command()
+async def kiss(ctx, member: discord.Member = None):
+    if member is None:
+        await ctx.send("❌ Devi menzionare qualcuno da baciare! Esempio: `!kiss @utente`")
+        return
+
+    if member == ctx.author:
+        await ctx.send("😳 Non puoi baciarti da solo!")
+        return
+
+    gif = random.choice(kiss_gifs)
+    await ctx.send(f"💋 {ctx.author.mention} ha baciato {member.mention}!\n{gif}")
+import random
+
+@bot.command()
+async def blackjack(ctx):
+    suits = ['♠️','♥️','♦️','♣️']
+    values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']
+
+    def draw_card():
+        return random.choice(values) + random.choice(suits)
+
+    def calculate_hand(hand):
+        total = 0
+        aces = 0
+        for card in hand:
+            value = card[:-1]  # rimuove il seme
+            if value in ['J','Q','K']:
+                total += 10
+            elif value == 'A':
+                total += 11
+                aces += 1
+            else:
+                total += int(value)
+        while total > 21 and aces:
+            total -= 10
+            aces -= 1
+        return total
+
+    # Mazzi iniziali
+    player_hand = [draw_card(), draw_card()]
+    dealer_hand = [draw_card(), draw_card()]
+
+    await ctx.send(f"🃏 Il tuo mazzo: {player_hand} (Totale: {calculate_hand(player_hand)})\n"
+                   f"🂠 Mazzo del dealer: ['??', '{dealer_hand[1]}']")
+
+    # Turno del giocatore
+    while True:
+        await ctx.send("Scrivi `hit` per pescare o `stand` per stare.")
+
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["hit","stand"]
+
+        try:
+            msg = await bot.wait_for("message", check=check, timeout=30)
+        except:
+            await ctx.send("⏱️ Tempo scaduto! Partita terminata.")
+            return
+
+        if msg.content.lower() == "hit":
+            player_hand.append(draw_card())
+            total = calculate_hand(player_hand)
+            await ctx.send(f"🃏 Nuova mano: {player_hand} (Totale: {total})")
+            if total > 21:
+                await ctx.send("💥 Hai sballato! Dealer vince.")
+                return
+        else:
+            break
+
+    # Turno del dealer
+    dealer_total = calculate_hand(dealer_hand)
+    while dealer_total < 17:
+        dealer_hand.append(draw_card())
+        dealer_total = calculate_hand(dealer_hand)
+
+    player_total = calculate_hand(player_hand)
+
+    await ctx.send(f"🂡 Mazzo del dealer: {dealer_hand} (Totale: {dealer_total})")
+
+    if dealer_total > 21 or player_total > dealer_total:
+        await ctx.send("🎉 Complimenti! Hai vinto!")
+    elif player_total < dealer_total:
+        await ctx.send("😢 Dealer vince!")
+    else:
+        await ctx.send("🤝 Pareggio!")
+import random
+from itertools import combina@bot.command()
+async def poker(ctx, players: int = 2):
+    if players < 2 or players > 4:
+        await ctx.send("❌ Puoi giocare solo da 2 a 4 giocatori.")
+        return
+
+    suits = ['♠️','♥️','♦️','♣️']
+    values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']
+
+    # Crea mazzo
+    deck = [v+s for v in values for s in suits]
+    random.shuffle(deck)
+
+    # Distribuisci 2 carte a ciascun giocatore
+    hands = {}
+    for i in range(players):
+        hands[f"Giocatore {i+1}"] = [deck.pop(), deck.pop()]
+
+    # 5 carte comuni
+    table_cards = [deck.pop() for _ in range(5)]
+
+    await ctx.send(f"🃏 Carte sul tavolo: {table_cards}")
+
+    # Mostra le carte ai giocatori (in DM se vuoi sicurezza)
+    for player, cards in hands.items():
+        await ctx.send(f"{player} ha: {cards}")
+
+    # Semplice calcolo punti: somma valori (2-10=numero, J=11,Q=12,K=13,A=14)
+    def card_value(card):
+        v = card[:-1]
+        if v == 'J': return 11
+        if v == 'Q': return 12
+        if v == 'K': return 13
+        if v == 'A': return 14
+        return int(v)
+
+    def hand_score(hand):
+        # prende le 2 carte del giocatore + 5 del tavolo → somma valori migliori 5
+        all_cards = hand + table_cards
+        best_score = 0
+@bot.command()
+async def akinator(ctx):
+    await ctx.send("🤖 Benvenuto in Akinator! Pensa a un personaggio famoso, io cercherò di indovinarlo.")
+    
+    # Database base
+    questions = [
+        {"q": "È un personaggio reale?", "yes": ["Elon Musk", "Bill Gates"], "no": ["Mario", "Harry Potter"]},
+        {"q": "È un uomo?", "yes": ["Elon Musk", "Bill Gates", "Mario"], "no": ["Princess Peach"]},
+        {"q": "È un personaggio dei videogiochi?", "yes": ["Mario", "Princess Peach"], "no": ["Elon Musk", "Bill Gates"]}
+    ]
+
+    possible = ["Elon Musk", "Bill Gates", "Mario", "Princess Peach", "Harry Potter"]
+
+    for item in questions:
+        await ctx.send(item["q"] + " (rispondi: si/no/forse/stop)")
+
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["si","no","forse","stop"]
+
+        try:
+            msg = await bot.wait_for("message", check=check, timeout=30)
+        except:
+            await ctx.send("⏱️ Tempo scaduto! Partita terminata.")
+            return
+
+        answer = msg.content.lower()
+
+        if answer == "stop":
+            await ctx.send("❌ Hai interrotto il gioco.")
+            return
+        elif answer == "si":
+            possible = [p for p in possible if p in item["yes"]]
+        elif answer == "no":
+            possible = [p for p in possible if p in item["no"]]
+        # "forse" non filtra
+
+        if len(possible) == 1:
+            await ctx.send(f"🎉 Ho indovinato! Stavi pensando a **{possible[0]}**!")
+            return
+        elif len(possible) == 0:
+            await ctx.send("🤔 Non sono riuscito a indovinare...")
+            return
+
+    # Se dopo tutte le domande ci sono più possibili
+    await ctx.send(f"🤷‍♂️ Non sono sicuro, ma forse pensavi a uno di questi: {possible}")
+import random
+
+memes = [
+    "https://i.imgflip.com/30b1gx.jpg",
+    "https://i.imgflip.com/1bij.jpg",
+    "https://i.imgflip.com/26am.jpg",
+    "https://i.imgflip.com/1otk96.jpg",
+    "https://i.imgflip.com/1ur9b0.jpg"
+]
+
+@bot.command()
+async def meme(ctx):
+    meme_url = random.choice(memes)
+    await ctx.send(f"😂 Meme casuale!\n{meme_url}")
+import random
+
+slap_gifs = [
+    "https://media.giphy.com/media/mEtSQlxqBtWWA/giphy.gif",
+    "https://media.giphy.com/media/jLeyZWgtwgr2U/giphy.gif",
+    "https://media.giphy.com/media/3XlEk2RxPS1m8/giphy.gif",
+    "https://media.giphy.com/media/Zau0yrl17uzdK/giphy.gif"
+]
+
+@bot.command()
+async def slap(ctx, member: discord.Member = None):
+    if member is None:
+        await ctx.send("❌ Devi menzionare qualcuno da schiaffeggiare! Esempio: `!slap @utente`")
+        return
+
+    if member == ctx.author:
+        await ctx.send("😳 Non puoi schiaffeggiare te stesso!")
+        return
+
+    gif = random.choice(slap_gifs)
+    await ctx.send(f"✋ {ctx.author.mention} ha dato uno schiaffo a {member.mention}!\n{gif}")
+embed = discord.Embed(description=f"✋ {ctx.author.mention} ha dato uno schiaffo a {member.mention}!")
+embed.set_image(url=gif)
+await ctx.send(embed=embed)
+import discord
+from discord import app_commands
+from discord.ext import commands
+import random
+import asyncio
+from itertools import combinations
+import time
+from datetime import timedelta
+from collections import defaultdict
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ------------------- SOCIAL -------------------
+kiss_gifs = [
+    "https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif",
+    "https://media.giphy.com/media/FqBTvSNjNzeZG/giphy.gif"
+]
+
+slap_gifs = [
+    "https://media.giphy.com/media/mEtSQlxqBtWWA/giphy.gif",
+    "https://media.giphy.com/media/jLeyZWgtwgr2U/giphy.gif"
+]
+
+@bot.tree.command(name="kiss", description="Bacia un utente")
+@app_commands.describe(member="Seleziona l'utente da baciare")
+async def kiss(interaction: discord.Interaction, member: discord.Member):
+    if member == interaction.user:
+        await interaction.response.send_message("😳 Non puoi baciare te stesso!")
+        return
+    gif = random.choice(kiss_gifs)
+    await interaction.response.send_message(f"💋 {interaction.user.mention} ha baciato {member.mention}!\n{gif}")
+
+@bot.tree.command(name="slap", description="Dai uno schiaffo a un utente")
+@app_commands.describe(member="Seleziona l'utente da schiaffeggiare")
+async def slap(interaction: discord.Interaction, member: discord.Member):
+    if member == interaction.user:
+        await interaction.response.send_message("😳 Non puoi schiaffeggiare te stesso!")
+        return
+    gif = random.choice(slap_gifs)
+    await interaction.response.send_message(f"✋ {interaction.user.mention} ha dato uno schiaffo a {member.mention}!\n{gif}")
+
+# ------------------- GIOCHI -------------------
+
+# ------ BLACKJACK ------
+@bot.tree.command(name="blackjack", description="Gioca a Blackjack")
+async def blackjack(interaction: discord.Interaction):
+    suits = ['♠️','♥️','♦️','♣️']
+    values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']
+
+    def draw_card():
+        return random.choice(values) + random.choice(suits)
+
+    def calculate_hand(hand):
+        total = 0
+        aces = 0
+        for card in hand:
+            value = card[:-1]
+            if value in ['J','Q','K']:
+                total += 10
+            elif value == 'A':
+                total += 11
+                aces += 1
+            else:
+                total += int(value)
+        while total > 21 and aces:
+            total -= 10
+            aces -= 1
+        return total
+
+    player_hand = [draw_card(), draw_card()]
+    dealer_hand = [draw_card(), draw_card()]
+
+    await interaction.response.send_message(f"🃏 Il tuo mazzo: {player_hand} (Totale: {calculate_hand(player_hand)})\n🂠 Mazzo del dealer: ['??', '{dealer_hand[1]}']")
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel and m.content.lower() in ["hit","stand"]
+
+    while True:
+        await interaction.followup.send("Scrivi `hit` per pescare o `stand` per stare.", ephemeral=True)
+        try:
+            msg = await bot.wait_for("message", check=check, timeout=30)
+        except:
+            await interaction.followup.send("⏱️ Tempo scaduto! Partita terminata.", ephemeral=True)
+            return
+
+        if msg.content.lower() == "hit":
+            player_hand.append(draw_card())
+            total = calculate_hand(player_hand)
+            await interaction.followup.send(f"🃏 Nuova mano: {player_hand} (Totale: {total})", ephemeral=True)
+            if total > 21:
+                await interaction.followup.send("💥 Hai sballato! Dealer vince.", ephemeral=True)
+                return
+        else:
+            break
+
+    dealer_total = calculate_hand(dealer_hand)
+    while dealer_total < 17:
+        dealer_hand.append(draw_card())
+        dealer_total = calculate_hand(dealer_hand)
+
+    player_total = calculate_hand(player_hand)
+    await interaction.followup.send(f"🂡 Mazzo del dealer: {dealer_hand} (Totale: {dealer_total})", ephemeral=True)
+
+    if dealer_total > 21 or player_total > dealer_total:
+        await interaction.followup.send("🎉 Complimenti! Hai vinto!", ephemeral=True)
+    elif player_total < dealer_total:
+        await interaction.followup.send("😢 Dealer vince!", ephemeral=True)
+    else:
+        await interaction.followup.send("🤝 Pareggio!", ephemeral=True)
+
+# ------ MEME ------
+memes = [
+    "https://i.imgflip.com/30b1gx.jpg",
+    "https://i.imgflip.com/1bij.jpg",
+    "https://i.imgflip.com/26am.jpg"
+]
+
+@bot.tree.command(name="meme", description="Meme casuale")
+async def meme(interaction: discord.Interaction):
+    meme_url = random.choice(memes)
+    await interaction.response.send_message(f"😂 Meme casuale!\n{meme_url}")
+
+# ------ POKER (semplificato) ------
+@bot.tree.command(name="poker", description="Gioca a Poker semplificato")
+@app_commands.describe(players="Numero di giocatori (2-4)")
+async def poker(interaction: discord.Interaction, players: int = 2):
+    if players < 2 or players > 4:
+        await interaction.response.send_message("❌ Puoi giocare solo da 2 a 4 giocatori.")
+        return
+
+    suits = ['♠️','♥️','♦️','♣️']
+    values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']
+    deck = [v+s for v in values for s in suits]
+    random.shuffle(deck)
+
+    hands = {}
+    for i in range(players):
+        hands[f"Giocatore {i+1}"] = [deck.pop(), deck.pop()]
+
+    table_cards = [deck.pop() for _ in range(5)]
+    await interaction.response.send_message(f"🃏 Carte sul tavolo: {table_cards}")
+
+    for player, cards in hands.items():
+        await interaction.followup.send(f"{player} ha: {cards}", ephemeral=True)
+
+    def card_value(card):
+        v = card[:-1]
+        if v == 'J': return 11
+        if v == 'Q': return 12
+        if v == 'K': return 13
+        if v == 'A': return 14
+        return int(v)
+
+    def hand_score(hand):
+        all_cards = hand + table_cards
+        best_score = 0
+        for combo in combinations(all_cards, 5):
+            score = sum(card_value(c) for c in combo)
+            if score > best_score:
+                best_score = score
+        return best_score
+
+    scores = {player: hand_score(cards) for player, cards in hands.items()}
+    winner = max(scores, key=scores.get)
+    result = "🏆 Risultati:\n"
+    for player, score in scores.items():
+        result += f"{player}: {score} punti\n"
+    result += f"\n🎉 Vincitore: {winner}!"
+    await interaction.followup.send(result)
+
+# ------------------- ON READY -------------------
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    print(f"Bot connesso come {bot.user}")
+
+bot.run("MTQ2NzI4MDUxMzQ1Mzc4OTM5Mg.G9d6JI.2T_z9iSTW44YwkLCCnSX9FFQNjjkHAzeKTn9hs")
