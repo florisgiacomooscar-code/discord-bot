@@ -1,0 +1,31 @@
+name: Run Discord Bot
+
+on:
+  push:
+    branches: [ main ]  # si attiva quando fai push
+  workflow_dispatch:     # puoi anche avviarlo manualmente
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+name: Checkout repo
+    uses: actions/checkout@v3
+
+    
+name: Setup Python
+    uses: actions/setup-python@v4
+    with:
+      python-version: "3.11"
+
+    
+name: Install dependencies
+    run: pip install discord.py
+
+    
+name: Run Bot
+    env:
+      DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+    run: python bot.py
